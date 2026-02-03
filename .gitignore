@@ -1,0 +1,4 @@
+.venv
+dataset/
+models/trained
+app.log
