@@ -95,13 +95,20 @@ class TreeForecastingModel(BaseForecastingModel):
         
         logger.info(f"Fitting {self.model_name} with {len(self.feature_names)} features...")
         
+        # Drop fully-NaN columns
+        self.all_nan_cols = X_numeric.columns[X_numeric.isna().all()]
+        if len(self.all_nan_cols) > 0:
+            X_numeric = X_numeric.drop(columns=self.all_nan_cols)
+        
         # Handle missing values (trees can handle some, but imputation is safer)
+        self.imputer = SimpleImputer(strategy='median')
         X_imputed = pd.DataFrame(
             self.imputer.fit_transform(X_numeric),
             columns=X_numeric.columns,
             index=X_numeric.index
         )
-        
+
+        self.feature_names_ = X_imputed.columns.tolist()
         # Fit the model
         self.model.fit(X_imputed, y)
         self.is_fitted = True
@@ -119,17 +126,19 @@ class TreeForecastingModel(BaseForecastingModel):
     
     def predict(self, X: pd.DataFrame, **kwargs) -> np.ndarray:
         """Generate predictions using the fitted tree model."""
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before prediction")
+
+        X_numeric = X.select_dtypes(include=[np.number]).copy()
         
-        # Use the same features as training
-        X_features = X[self.feature_names]
-        
+        if hasattr(self, "all_nan_cols"):
+            X_numeric = X_numeric.drop(columns=self.all_nan_cols, errors="ignore")
+
+        X_numeric = X_numeric.reindex(columns=self.feature_names_, fill_value=np.nan)
+
         # Apply same imputation as training
         X_imputed = pd.DataFrame(
-            self.imputer.transform(X_features),
-            columns=X_features.columns,
-            index=X_features.index
+            self.imputer.transform(X_numeric),
+            columns=X_numeric.columns,
+            index=X_numeric.index
         )
         
         # Generate predictions

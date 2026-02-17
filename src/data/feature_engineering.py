@@ -161,7 +161,7 @@ class FeatureEngineer:
         df = df.copy()
         
         logger.info("Creating categorical and interaction features...")
-        
+        df['hours_stock_status'] = pd.to_numeric(df['hours_stock_status'], errors='coerce').fillna(0)
         # Store-level aggregations (store characteristics)
         store_stats = df.groupby('store_id').agg({
             'sale_amount': ['mean', 'std', 'max'],
@@ -230,13 +230,13 @@ class FeatureEngineer:
         df = self.create_temporal_features(df)
         
         # Step 2: Categorical features (these create new base features)
-        # df = self.create_categorical_features(df)
+        df = self.create_categorical_features(df)
         
         # Step 3: Lag features (these depend on having clean temporal data)
-        # df = self.create_lag_features(df)
+        df = self.create_lag_features(df)
         
         # Step 4: Rolling features (these depend on temporal ordering)
-        # df = self.create_rolling_features(df)
+        df = self.create_rolling_features(df)
         
         # Step 5: Interaction features (these depend on base features existing)
         df = self.create_interaction_features(df)

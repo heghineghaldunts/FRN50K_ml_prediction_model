@@ -9,8 +9,17 @@ class ForecastingMetrics:
     """
     Comprehensive evaluation metrics for demand forecasting models.
     
-    Teaching purpose: Understanding how to properly evaluate forecasting models
-    is crucial. Different metrics capture different aspects of model performance.
+    Core metrics:
+    - MAE, RMSE, MAPE, sMAPE, Bias, Bias %
+    - MASE (if training data is available)
+    
+    Business-relevant metrics:
+    - High vs low volume products
+    - Peak vs off-peak hours
+    - Stockout vs in-stock periods
+    
+    Residual analysis helpers:
+    - Add residuals, absolute errors, and percentage errors to DataFrame
     """
     
     @staticmethod
@@ -142,3 +151,96 @@ class ForecastingMetrics:
             results.append(group_result)
         
         return pd.DataFrame(results)
+    
+    # Example helpers for business use-cases
+    @staticmethod
+    def high_low_volume(df: pd.DataFrame, volume_col: str, threshold: float):
+        """Classify products as high- or low-volume based on a threshold"""
+        if threshold is None:
+            threshold = df[volume_col].median()
+        df['volume_category'] = df[volume_col].apply(lambda x: 'high' if x >= threshold else 'low')
+        return df
+    
+    @staticmethod
+    def evaluate_by_time_period(df: pd.DataFrame, y_true_col: str, y_pred_col: str, hour_col: str, peak_hours: List[int], y_train: Optional[np.ndarray] = None) -> pd.DataFrame:
+        """Evaluate performance during peak vs off-peak hours"""
+        df['time_period'] = df[hour_col].apply(lambda h: 'peak' if h in peak_hours else 'off_peak')
+        return ForecastingMetrics.evaluate_by_group(df, y_true_col, y_pred_col, ['time_period'], y_train)
+
+    @staticmethod
+    def evaluate_by_stock_status(df: pd.DataFrame, y_true_col: str, y_pred_col: str, stock_col: str, y_train: Optional[np.ndarray] = None) -> pd.DataFrame:
+        """Evaluate performance during stockout vs in-stock periods"""
+        df['stock_status'] = df[stock_col].apply(lambda x: 'in_stock' if x > 0 else 'stockout')
+        return ForecastingMetrics.evaluate_by_group(df, y_true_col, y_pred_col, ['stock_status'], y_train)
+
+    # Residual / Error Analysis
+    @staticmethod
+    def add_residuals(df: pd.DataFrame, y_true_col: str, y_pred_col: str) -> pd.DataFrame:
+        df = df.copy()
+        df['residual'] = df[y_pred_col] - df[y_true_col]
+        df['abs_error'] = np.abs(df['residual'])
+        df['pct_error'] = np.abs(df['residual'] / np.maximum(np.abs(df[y_true_col]), 1e-8)) * 100
+        return df
+
+    @staticmethod
+    def compare_models(df: pd.DataFrame, y_true_col: str, y_pred_cols: List[str], y_train: Optional[np.ndarray] = None) -> pd.DataFrame:
+        """Compare multiple models side by side"""
+        comparison = []
+        for col in y_pred_cols:
+            metrics = ForecastingMetrics.calculate_all_metrics(df[y_true_col].values, df[col].values, y_train)
+            metrics['model'] = col
+            comparison.append(metrics)
+        return pd.DataFrame(comparison).sort_values('MAE')
+    
+    def residual_analysis(y_true: np.ndarray, y_pred: np.ndarray) -> pd.DataFrame:
+        """
+        Analyze residuals for systematic bias or errors.
+        """
+        residuals = y_pred - y_true
+        return pd.DataFrame({
+            'y_true': y_true,
+            'y_pred': y_pred,
+            'residual': residuals
+        })
+    
+    @staticmethod
+    def evaluate_volume_groups(df: pd.DataFrame, y_true_col: str, y_pred_col: str, volume_threshold: float):
+        """Separate high-volume vs low-volume products"""
+        df['volume_group'] = df[y_true_col].apply(lambda x: 'high' if x >= volume_threshold else 'low')
+        results = {}
+        for group in ['high', 'low']:
+            group_data = df[df['volume_group'] == group]
+            results[group] = {
+                'MAE': ForecastingMetrics.MAE(group_data[y_true_col].values, group_data[y_pred_col].values),
+                'Bias': ForecastingMetrics.Bias(group_data[y_true_col].values, group_data[y_pred_col].values)
+            }
+        return results
+
+    @staticmethod
+    def evaluate_peak_hours(df: pd.DataFrame, y_true_col: str, y_pred_col: str, peak_hours: List[int]):
+        """Evaluate model during peak vs off-peak hours"""
+        df['hour_group'] = df['hour'].apply(lambda x: 'peak' if x in peak_hours else 'offpeak')
+        results = {}
+        for group in ['peak', 'offpeak']:
+            group_data = df[df['hour_group'] == group]
+            results[group] = {
+                'MAE': ForecastingMetrics.MAE(group_data[y_true_col].values, group_data[y_pred_col].values),
+                'Bias': ForecastingMetrics.Bias(group_data[y_true_col].values, group_data[y_pred_col].values)
+            }
+        return results
+
+    @staticmethod
+    def evaluate_stockout(df: pd.DataFrame, y_true_col: str, y_pred_col: str, stock_col: str):
+        """Evaluate performance on stockout vs in-stock periods"""
+        df['stock_group'] = df[stock_col].apply(lambda x: 'stockout' if x == 0 else 'in-stock')
+        results = {}
+        for group in ['stockout', 'in-stock']:
+            group_data = df[df['stock_group'] == group]
+            results[group] = {
+                'MAE': ForecastingMetrics.MAE(group_data[y_true_col].values, group_data[y_pred_col].values),
+                'Bias': ForecastingMetrics.Bias(group_data[y_true_col].values, group_data[y_pred_col].values)
+            }
+        return results
+
+    
+    

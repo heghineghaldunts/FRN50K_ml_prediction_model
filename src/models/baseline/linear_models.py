@@ -24,7 +24,7 @@ class LinearForecastingModel(BaseForecastingModel):
     - ElasticNet: Combined L1 + L2 regularization
     """
     
-    def __init__(self, model_type: str = 'linear', config: dict = None):
+    def __init__(self, model_type: str = 'linear', config: Dict = None):
         """
         Initialize linear model with specified type and configuration.
         
@@ -70,7 +70,7 @@ class LinearForecastingModel(BaseForecastingModel):
         between training and prediction time.
         """
         X_processed = X.copy()
-        
+
         # Step 1: Handle missing values
         if self.handle_missing:
             if is_training:
@@ -94,22 +94,17 @@ class LinearForecastingModel(BaseForecastingModel):
         # Step 2: Feature scaling
         if self.use_scaling:
             if is_training:
-                # Choose scaler based on configuration
-                if self.scaling_method == 'standard':
-                    self.scaler = StandardScaler()
-                elif self.scaling_method == 'robust':
-                    self.scaler = RobustScaler()  # Less sensitive to outliers
-                else:
-                    raise ValueError(f"Unknown scaling method: {self.scaling_method}")
-                
+                self.scaler = StandardScaler() if self.scaling_method=='standard' else RobustScaler()
                 X_scaled = self.scaler.fit_transform(X_processed)
             else:
                 if self.scaler is None:
-                    raise ValueError("Scaler not fitted. This suggests an error in training.")
+                    raise ValueError("Scaler not fitted.")
                 X_scaled = self.scaler.transform(X_processed)
         else:
             X_scaled = X_processed.values
-        
+            
+        # Handle infinities
+        X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=1e10, neginf=-1e10)
         return X_scaled
     
     def fit(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> 'LinearForecastingModel':

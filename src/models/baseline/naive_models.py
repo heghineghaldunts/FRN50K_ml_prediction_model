@@ -162,6 +162,9 @@ class SeasonalNaiveForecaster(BaseForecastingModel):
         data = X.copy()
         data['target'] = y
         data['dt'] = pd.to_datetime(data['dt'])
+        data['hour'] = data['dt'].dt.hour
+        data['day_of_week'] = data['dt'].dt.dayofweek      
+
         
         logger.info("Fitting seasonal naive model...")
         
@@ -171,11 +174,16 @@ class SeasonalNaiveForecaster(BaseForecastingModel):
             
             seasonal_patterns = {}
             for period in self.seasonal_periods:
-                # Create seasonal indices
-                seasonal_indices = np.arange(len(group)) % period
                 pattern = {}
+                
                 for i in range(period):
-                    mask = seasonal_indices == i
+                    if period == 24:  # daily
+                        mask = group['hour'] == i
+                    elif period == 168:  # weekly
+                        mask = (group['day_of_week'] * 24 + group['hour']) % period == i
+                    else:
+                        mask = np.arange(len(group)) % period == i
+
                     if mask.sum() > 0:
                         pattern[i] = group.loc[mask, 'target'].mean()
                     else:
@@ -207,7 +215,13 @@ class SeasonalNaiveForecaster(BaseForecastingModel):
             
             # Calculate seasonal index based on hour of day
             hour = pd.to_datetime(row['dt']).hour
-            seasonal_idx = hour % primary_period
+            day_of_week = pd.to_datetime(row['dt']).dayofweek
+            if primary_period == 24:
+                seasonal_idx = hour
+            elif primary_period == 168:
+                seasonal_idx = (day_of_week * 24 + hour) % primary_period
+            else:
+                seasonal_idx = 0
             
             pred = pattern.get(seasonal_idx, 0)
             predictions.append(max(0, pred))

@@ -29,6 +29,10 @@ from data.feature_engineering import FeatureEngineer
 from models.baseline.linear_models import LinearForecastingModel
 from models.baseline.tree_models import TreeForecastingModel
 from models.baseline.naive_models import NaiveForecaster
+from models.baseline.xgboost_models import XGBoostForecastingModel
+from models.baseline.ensemble_models import EnsembleForecastingModel
+from models.baseline.random_forest_models import RandomForestForecastingModel
+
 from evaluate.metrics import ForecastingMetrics
 
 # Configure logging
@@ -45,7 +49,7 @@ def parse_arguments():
     parser.add_argument(
         '--model',
         type=str,
-        choices=['naive', 'linear', 'ridge', 'lasso', 'random_forest', 'gradient_boosting'],
+        choices=['naive', 'linear', 'ridge', 'lasso', 'random_forest', 'gradient_boosting', 'xgboost', 'ensemble'],
         default='linear',
         help='Model type to train'
     )
@@ -143,6 +147,15 @@ def create_model(model_name: str, config: dict):
             model_type=model_name,
             config=model_config.get('random_forest', {})
         )
+    elif model_name == 'xgboost':
+        return XGBoostForecastingModel(
+            config=model_config.get('xgboost', {})
+        )
+    
+    elif model_name == 'ensemble':
+        return EnsembleForecastingModel(
+            config=model_config.get('ensemble', {})
+        )
     
     else:
         raise ValueError(f"Unknown model: {model_name}")
@@ -179,7 +192,12 @@ def train_and_evaluate_model(model, train_data: pd.DataFrame, eval_data: pd.Data
     start_time = datetime.now()
     
     try:
-        model.fit(X_train, y_train)
+        if isinstance(model, NaiveForecaster):
+            # Naive needs full dataframe with store_id & product_id
+            model.fit(train_data, train_data[target_col])
+        else:
+            model.fit(X_train, y_train)
+
         training_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"Training completed in {training_time:.2f} seconds")
         
@@ -190,8 +208,13 @@ def train_and_evaluate_model(model, train_data: pd.DataFrame, eval_data: pd.Data
     # Generate predictions
     logger.info("Generating predictions...")
     try:
-        train_predictions = model.predict(X_train)
-        eval_predictions = model.predict(X_eval)
+        if isinstance(model, NaiveForecaster):
+            train_predictions = model.predict(train_data)
+            eval_predictions = model.predict(eval_data)
+        else:
+            train_predictions = model.predict(X_train)
+            eval_predictions = model.predict(X_eval)
+
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise
